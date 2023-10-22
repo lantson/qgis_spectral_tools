@@ -23,27 +23,26 @@
 """
 
 import os
+
 import numpy as np
-
-from qgis.gui import *
-from qgis.PyQt import uic, QtWidgets
-
-from qgis.PyQt.QtCore import Qt
-from qgis.PyQt.QtWidgets import QMainWindow, QVBoxLayout, QWidget, QAction
-from qgis.core import QgsRasterLayer, QgsMessageLog, QgsProject, QgsPointXY, QgsRaster, QgsPoint
-
-from PyQt5.QtWidgets import QGraphicsScene
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-
+from PyQt5.QtWidgets import QGraphicsScene
+from qgis.core import (QgsMapLayerProxyModel, QgsMessageLog, QgsPoint,
+                       QgsPointXY, QgsProject, QgsRaster, QgsRasterLayer,)
+from qgis.gui import *
+from qgis.PyQt import QtWidgets, uic
+from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtWidgets import QAction, QMainWindow, QVBoxLayout, QWidget
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
-FORM_CLASS, _ = uic.loadUiType(os.path.join(
-    os.path.dirname(__file__), 'spectral_tools_main.ui'))
+FORM_CLASS, _ = uic.loadUiType(
+    os.path.join(os.path.dirname(__file__), "spectral_tools_main.ui")
+)
 
 
 def print(msg: str):
-    QgsMessageLog.logMessage(msg, 'SpectralTools')
+    QgsMessageLog.logMessage(msg, "SpectralTools")
 
 
 class SpectralToolsWindow(QMainWindow, FORM_CLASS):
@@ -58,15 +57,10 @@ class SpectralToolsWindow(QMainWindow, FORM_CLASS):
         self.setupUi(self)
         self.setWindowTitle("Spectral Tools")
 
-       
         # Initialize the map canvas
         self.canvas.setCanvasColor(Qt.white)
         self.canvas.enableAntiAliasing(True)
-        
-        # Load a raster layer (replace 'your_raster_file_path' with the path to your raster file)
-        self.loadRasterLayer('/home/lantson/.local/share/QGIS/QGIS3/profiles/default/python/spectral_tools/output_rgb.tiff')
 
-        
         self.actionZoomIn = QAction("Zoom in", self)
         self.actionZoomOut = QAction("Zoom out", self)
         self.actionPan = QAction("Pan", self)
@@ -91,59 +85,62 @@ class SpectralToolsWindow(QMainWindow, FORM_CLASS):
         # create the map tools
         self.toolPan = QgsMapToolPan(self.canvas)
         self.toolPan.setAction(self.actionPan)
-        self.toolZoomIn = QgsMapToolZoom(self.canvas, False) # false = in
+        self.toolZoomIn = QgsMapToolZoom(self.canvas, False)  # false = in
         self.toolZoomIn.setAction(self.actionZoomIn)
-        self.toolZoomOut = QgsMapToolZoom(self.canvas, True) # true = out
+        self.toolZoomOut = QgsMapToolZoom(self.canvas, True)  # true = out
         self.toolZoomOut.setAction(self.actionZoomOut)
         self.toolIdentifyFeature = QgsMapToolIdentify(self.canvas)
         self.toolIdentifyFeature.setAction(self.actionInspectPixel)
 
-        #self.canvas.clicked.connect(self.getPixelValue)
-        #self.canvas.xyCoordinates.connect(self.showCoordinates)
+        self.toolIdentifyFeature.canvasReleaseEvent = (
+            lambda event: self.extractPixelValue(event)
+        )
 
-        self.toolIdentifyFeature.canvasReleaseEvent = lambda event: self.extractPixelValue(event)
 
+        # Automatically reflect changes from QGIS to this window
+        self.cb_input_raster.setFilters(QgsMapLayerProxyModel.RasterLayer)
+
+        # Select the by the user selected layer in the combobox
+        self.cb_input_raster.currentIndexChanged.connect(self.load_selected_layer)
+        # The previous line only works when the index is changed. So by default load layer 0.
+        self.load_selected_layer()
 
         self.pan()
         self.canvas.show()
-    
+
     def extractPixelValue(self, event):
-        
+        # Don't do anything if no layer is loaded
+        if not self.canvas.layers():
+            return
+
         # Extract the number of bands of this layer
         n_bands = self.canvas.layers()[0].bandCount()
 
         # Each pixel has n bands. This array will store the value at each band.
         pixel_band_values = np.empty((n_bands), dtype=np.float32)
 
-        
+        # For each band extract the pixel value at this Point
         for band_id in range(n_bands):
             point = QgsPointXY(event.mapPoint().x(), event.mapPoint().y())
 
             # First band starts at 1 :'(
-            result, _ = self.canvas.layers()[0].dataProvider().sample(point, band_id+1)
+            result, _ = (
+                self.canvas.layers()[0].dataProvider().sample(point, band_id + 1)
+            )
 
             pixel_band_values[band_id] = result
 
-        # [] --> use all the active layers
-        #result = self.toolIdentifyFeature.identify(QgsPoint(event.x(), event.y()), [], QgsRaster.IdentifyFormatValue)
-        # result = self.toolIdentifyFeature.identify(event.x(), event.y(), [],)
-
-        
         # Create a Matplotlib figure
-        figure = Figure()
+        figure = Figure(figsize=(5, 3))
 
         # Create a subplot on the figure
         ax = figure.add_subplot(111)
         ax.plot(pixel_band_values, label="Spectrum")
-        
-        self.scene = QGraphicsScene(self) 
+
+        self.scene = QGraphicsScene(self)
         figure_canvas = FigureCanvas(figure)
         self.scene.addWidget(figure_canvas)
         self.graphics_view.setScene(self.scene)
-        
-        #if result:
-            #m_value = result[0].geometry().constGet().mAt(0) # only for LineString as explained above
-            #print(m_value)
 
     def zoomIn(self):
         self.canvas.setMapTool(self.toolZoomIn)
@@ -153,15 +150,17 @@ class SpectralToolsWindow(QMainWindow, FORM_CLASS):
 
     def pan(self):
         self.canvas.setMapTool(self.toolPan)
-    
+
     def inspectPixel(self):
         self.canvas.setMapTool(self.toolIdentifyFeature)
 
-    
-    
-    def loadRasterLayer(self, raster_file):
-        # Create a raster layer
-        layer = QgsRasterLayer(raster_file, "Raster Layer")
+    # Define the function to load the selected layer
+    def load_selected_layer(self):
+
+        # Get the selected layer id from the combo box
+        selected_layer = self.cb_input_raster.currentLayer()
+        self.canvas.setExtent(selected_layer.extent())
+        self.canvas.setLayers([selected_layer])
         
         # Check if the layer loaded successfully
         if not layer.isValid():

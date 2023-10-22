@@ -200,9 +200,9 @@ class SpectralTools:
         layers = QgsProject.instance().layerTreeRoot().children()
 
         # Clear the contents of the comboBox from previous runs
-        self.main_window.cb_input_raster.clear()
+        #self.main_window.cb_input_raster.clear()
         # Populate the comboBox with names of all the loaded layers
-        self.main_window.cb_input_raster.addItems([layer.name() for layer in layers])
+        #self.main_window.cb_input_raster.addItems([layer.name() for layer in layers])
 
         # Set inspect feature layer to first layer
         #self.main_window.toolIdentifyFeature.setLayer(self.iface.activeLayer())
