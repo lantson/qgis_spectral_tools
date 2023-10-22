@@ -157,20 +157,16 @@ class SpectralToolsWindow(QMainWindow, FORM_CLASS):
     # Define the function to load the selected layer
     def load_selected_layer(self):
 
-        # Get the selected layer id from the combo box
-        selected_layer = self.cb_input_raster.currentLayer()
-        self.canvas.setExtent(selected_layer.extent())
-        self.canvas.setLayers([selected_layer])
-        
-        # Check if the layer loaded successfully
-        if not layer.isValid():
-            print(f"error summary: {layer.error().summary()}")
-        else:
-            # If you would like to use the opened layers for rendering, do not forget to add them to map layer registry. 
-            QgsProject.instance().addMapLayer(layer)
+        selected_layer_text = self.cb_input_raster.currentText()
+        selected_layers = QgsProject.instance().mapLayersByName(selected_layer_text)
 
-            # Add the raster layer to the map canvas
-            self.canvas.setExtent(layer.extent())
-            self.canvas.setLayers([layer])
-            #print("layer count:")
-            #print(f"{self.canvas.layerCount()}")
+        # When you emove the last layer in QGIS, the plugin crashes.
+        # So make sure you check if there are any rasters left!
+        if len(selected_layers) == 0:
+            return
+        else:
+            # Get the selected layer id from the combo box
+            selected_layer = self.cb_input_raster.currentLayer()
+            self.canvas.setExtent(selected_layer.extent())
+            self.canvas.setLayers([selected_layer])
+            
